@@ -1,0 +1,187 @@
+{
+  "datasets": [
+    {
+      "id": "dataset_01",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_02",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_03",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_04",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_05",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_06",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_07",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_08",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_09",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_10",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_11",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_12",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_13",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_14",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_15",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_16",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_17",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_18",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_19",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_20",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_21",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_22",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_23",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_24",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_25",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_26",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_27",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_28",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_29",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    },
+    {
+      "id": "dataset_30",
+      "flights": 100,
+      "type": "simulated",
+      "description": "Simulated ADS-B flight data"
+    }
+  ],
+  "total_datasets": 30,
+  "total_flights": 3000,
+  "source": "Simulated data (fallback)"
+}
