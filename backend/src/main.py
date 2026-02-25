@@ -346,7 +346,7 @@ async def process_adsb_data():
         
         await asyncio.sleep(settings.ADSB_UPDATE_INTERVAL)
 
-# Health and status endpoints
+# ==================== ROOT ENDPOINTS (/) ====================
 @app.get("/")
 async def root():
     """Root endpoint with system information"""
@@ -357,7 +357,8 @@ async def root():
         "docs": "/api/docs",
         "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
         "endpoints": {
-            "health": "/api/v1/health",
+            "health": "/api/health, /api/v1/health",
+            "datasets": "/api/datasets",
             "flights": "/api/v1/flights",
             "anomalies": "/api/v1/anomalies",
             "stats": "/api/v1/stats",
@@ -365,6 +366,10 @@ async def root():
         }
     }
 
+# ==================== API ENDPOINTS - BOTH /api AND /api/v1 ====================
+
+# Health endpoints (both /api/health and /api/v1/health)
+@app.get("/api/health")
 @app.get("/api/v1/health")
 async def health_check():
     """Health check endpoint"""
@@ -380,6 +385,102 @@ async def health_check():
         }
     }
 
+# ==================== DATASET ENDPOINTS ====================
+@app.get("/api/datasets")
+@app.get("/api/v1/datasets")
+async def get_datasets():
+    """Return list of 30 available datasets"""
+    print("📂 GET /api/datasets - Returning 30 datasets")
+    
+    # Create 30 datasets
+    datasets = []
+    for i in range(1, 31):
+        # Add some variation to make it interesting
+        flights_count = 100
+        anomalies_count = 10
+        if i % 5 == 0:
+            flights_count = 120
+            anomalies_count = 15
+        elif i % 7 == 0:
+            flights_count = 80
+            anomalies_count = 8
+        
+        datasets.append({
+            "id": i,
+            "name": f"dataset_{i:02d}",
+            "flights": flights_count,
+            "anomalies": anomalies_count,
+            "date": f"2024-01-{i:02d}",
+            "description": f"OpenSky dataset {i:02d} with {flights_count} flights",
+            "airports": ["JFK", "LAX", "LHR", "CDG", "DFW"][:3],
+            "anomaly_rate": f"{(anomalies_count/flights_count*100):.1f}%"
+        })
+    
+    return JSONResponse({
+        "datasets": datasets,
+        "count": len(datasets),
+        "total_flights": sum(d["flights"] for d in datasets),
+        "total_anomalies": sum(d["anomalies"] for d in datasets),
+        "timestamp": datetime.now(pytz.UTC).isoformat()
+    })
+
+@app.get("/api/dataset/{dataset_id}")
+@app.get("/api/v1/dataset/{dataset_id}")
+async def get_dataset_info(dataset_id: int):
+    """Get detailed information about a specific dataset"""
+    print(f"📂 GET /api/dataset/{dataset_id}")
+    
+    if dataset_id < 1 or dataset_id > 30:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    
+    # Generate dataset info
+    flights_count = 100
+    anomalies_count = 10
+    
+    if dataset_id % 5 == 0:
+        flights_count = 120
+        anomalies_count = 15
+    elif dataset_id % 7 == 0:
+        flights_count = 80
+        anomalies_count = 8
+    
+    # Generate sample routes based on dataset_id
+    routes = [
+        {"origin": "JFK", "destination": "LAX", "count": 25},
+        {"origin": "LHR", "destination": "JFK", "count": 20},
+        {"origin": "CDG", "destination": "DFW", "count": 15},
+        {"origin": "DXB", "destination": "JFK", "count": 12},
+        {"origin": "HKG", "destination": "SFO", "count": 10},
+        {"origin": "SYD", "destination": "LAX", "count": 8},
+        {"origin": "NRT", "destination": "ORD", "count": 6},
+        {"origin": "FRA", "destination": "IAD", "count": 4}
+    ]
+    
+    return JSONResponse({
+        "id": dataset_id,
+        "name": f"dataset_{dataset_id:02d}",
+        "flights": flights_count,
+        "anomalies": anomalies_count,
+        "date": f"2024-01-{dataset_id:02d}",
+        "description": f"OpenSky dataset {dataset_id:02d} with {flights_count} flights",
+        "anomaly_rate": f"{(anomalies_count/flights_count*100):.1f}%",
+        "routes": routes[:4],
+        "airlines": ["UAL", "AAL", "DAL", "BAW", "AFR", "SWA"],
+        "coverage": {
+            "start_time": f"2024-01-{dataset_id:02d}T00:00:00Z",
+            "end_time": f"2024-01-{dataset_id:02d}T23:59:59Z",
+            "region": "Global"
+        },
+        "stats": {
+            "avg_altitude": 35000,
+            "avg_speed": 450,
+            "max_altitude": 43000,
+            "min_altitude": 5000
+        }
+    })
+
+# ==================== FLIGHT ENDPOINTS ====================
+@app.get("/api/flights")
 @app.get("/api/v1/flights")
 async def get_flights(limit: int = 100):
     """Get recent flights"""
@@ -420,6 +521,186 @@ async def get_flights(limit: int = 100):
         print(f"❌ Error in get_flights endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/flights/live")
+@app.get("/api/v1/flights/live")
+async def get_live_flights():
+    """Get live flight data (simulated for demo)"""
+    print("📡 GET /api/flights/live - Returning live flight data")
+    
+    import random
+    from datetime import datetime, timedelta
+    
+    airlines = ["UAL", "AAL", "DAL", "BAW", "AFR", "SWA", "JBU", "RYR"]
+    airports = ["JFK", "LAX", "LHR", "CDG", "DFW", "ORD", "ATL", "SFO", "DXB", "HKG"]
+    phases = ["Climb", "Cruise", "Descent", "Approach"]
+    
+    flights = []
+    for i in range(1, 51):  # Generate 50 flights
+        is_anomaly = random.random() < 0.1  # 10% anomaly rate
+        anomaly_score = random.uniform(0.7, 0.95) if is_anomaly else random.uniform(0, 0.3)
+        
+        origin = random.choice(airports)
+        destination = random.choice([a for a in airports if a != origin])
+        
+        flight = {
+            "icao24": f"{random.randint(100000, 999999):x}",
+            "callsign": f"{random.choice(airlines)}{random.randint(100, 999)}",
+            "airline": random.choice(airlines),
+            "origin": origin,
+            "destination": destination,
+            "latitude": random.uniform(25, 50),
+            "longitude": random.uniform(-125, -65),
+            "altitude_ft": random.randint(25000, 41000),
+            "speed_knots": random.randint(400, 550),
+            "flight_phase": random.choice(phases),
+            "is_anomaly": is_anomaly,
+            "anomaly_score": anomaly_score,
+            "passenger_count": random.randint(50, 250),
+            "timestamp": datetime.now(pytz.UTC).isoformat()
+        }
+        flights.append(flight)
+    
+    return {
+        "mode": "live",
+        "flights": flights,
+        "count": len(flights),
+        "anomalies": len([f for f in flights if f["is_anomaly"]]),
+        "timestamp": datetime.now(pytz.UTC).isoformat()
+    }
+
+@app.get("/api/snapshot/{dataset_id}")
+@app.get("/api/v1/snapshot/{dataset_id}")
+async def get_snapshot(dataset_id: int, time_index: int = 50):
+    """Get snapshot data from a specific dataset"""
+    print(f"📸 GET /api/snapshot/{dataset_id}?time_index={time_index}")
+    
+    if dataset_id < 1 or dataset_id > 30:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    
+    import random
+    from datetime import datetime, timedelta
+    
+    airlines = ["UAL", "AAL", "DAL", "BAW", "AFR", "SWA", "JBU", "RYR"]
+    airports = ["JFK", "LAX", "LHR", "CDG", "DFW", "ORD", "ATL", "SFO", "DXB", "HKG"]
+    phases = ["Climb", "Cruise", "Descent", "Approach"]
+    
+    # Adjust anomaly rate based on dataset
+    anomaly_base_rate = 0.1
+    if dataset_id % 5 == 0:
+        anomaly_base_rate = 0.15
+    elif dataset_id % 7 == 0:
+        anomaly_base_rate = 0.08
+    
+    flights = []
+    for i in range(1, 101):  # 100 flights per dataset
+        is_anomaly = random.random() < anomaly_base_rate
+        anomaly_score = random.uniform(0.7, 0.95) if is_anomaly else random.uniform(0, 0.3)
+        
+        origin = random.choice(airports)
+        destination = random.choice([a for a in airports if a != origin])
+        
+        # Add some variation based on time_index
+        time_factor = time_index / 100.0
+        altitude = int(25000 + (time_factor * 16000))
+        
+        flight = {
+            "icao24": f"{random.randint(100000, 999999):x}",
+            "callsign": f"{random.choice(airlines)}{random.randint(100, 999)}",
+            "airline": random.choice(airlines),
+            "origin": origin,
+            "destination": destination,
+            "latitude": random.uniform(25, 50),
+            "longitude": random.uniform(-125, -65),
+            "altitude_ft": altitude,
+            "speed_knots": random.randint(400, 550),
+            "flight_phase": random.choice(phases),
+            "is_anomaly": is_anomaly,
+            "anomaly_score": anomaly_score,
+            "passenger_count": random.randint(50, 250),
+            "timestamp": f"2024-01-{dataset_id:02d}T{int(time_index/4):02d}:{(time_index%4)*15:02d}:00Z"
+        }
+        flights.append(flight)
+    
+    return {
+        "mode": "snapshot",
+        "dataset_id": dataset_id,
+        "time_index": time_index,
+        "flights": flights,
+        "count": len(flights),
+        "anomalies": len([f for f in flights if f["is_anomaly"]]),
+        "timestamp": datetime.now(pytz.UTC).isoformat()
+    }
+
+@app.post("/api/set-mode")
+@app.post("/api/v1/set-mode")
+async def set_mode(request: Dict[str, str]):
+    """Set the operation mode (live/snapshot)"""
+    mode = request.get("mode", "live")
+    print(f"🔄 Setting mode to: {mode}")
+    
+    return {
+        "mode": mode,
+        "status": "success",
+        "timestamp": datetime.now(pytz.UTC).isoformat(),
+        "message": f"Switched to {mode} mode"
+    }
+
+@app.get("/api/passengers/{flight_id}")
+@app.get("/api/v1/passengers/{flight_id}")
+async def get_passengers(flight_id: str):
+    """Get passenger manifest for a flight"""
+    print(f"👥 GET /api/passengers/{flight_id}")
+    
+    import random
+    from datetime import datetime, timedelta
+    
+    first_names = ["John", "Jane", "Michael", "Sarah", "David", "Emma", "James", "Lisa", "Robert", "Maria"]
+    last_names = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez"]
+    classes = ["Economy", "Premium Economy", "Business", "First"]
+    statuses = ["Checked-in", "Boarded", "Not Checked-in", "Standby"]
+    
+    # Generate 50-200 passengers
+    num_passengers = random.randint(50, 200)
+    passengers = []
+    
+    for i in range(1, num_passengers + 1):
+        first = random.choice(first_names)
+        last = random.choice(last_names)
+        seat_row = random.randint(1, 40)
+        seat_letter = random.choice(["A", "B", "C", "D", "E", "F"])
+        
+        passenger = {
+            "passenger_id": f"PAX{i:05d}",
+            "flight_callsign": flight_id,
+            "name": f"{first} {last}",
+            "seat": f"{seat_row}{seat_letter}",
+            "booking_class": random.choice(classes),
+            "status": random.choice(statuses),
+            "check_in_time": (datetime.now(pytz.UTC) - timedelta(hours=random.randint(1, 24))).isoformat() if random.random() > 0.3 else None,
+            "baggage_count": random.randint(0, 3),
+            "frequent_flyer": random.choice(["Gold", "Silver", "Bronze", "None"]),
+            "special_requirements": random.choice(["None", "Wheelchair", "Vegetarian Meal", "Kosher Meal"]) if random.random() > 0.7 else "None"
+        }
+        passengers.append(passenger)
+    
+    return {
+        "flight_callsign": flight_id,
+        "passengers": passengers,
+        "count": len(passengers),
+        "summary": {
+            "total_passengers": len(passengers),
+            "checked_in": len([p for p in passengers if p["status"] in ["Checked-in", "Boarded"]]),
+            "boarded": len([p for p in passengers if p["status"] == "Boarded"]),
+            "by_class": {
+                cls: len([p for p in passengers if p["booking_class"] == cls])
+                for cls in classes
+            }
+        },
+        "timestamp": datetime.now(pytz.UTC).isoformat()
+    }
+
+# ==================== ANOMALY ENDPOINTS ====================
+@app.get("/api/anomalies")
 @app.get("/api/v1/anomalies")
 async def get_anomalies(
     severity: Optional[str] = None, 
@@ -480,6 +761,8 @@ async def get_anomalies(
         print(f"❌ Error in get_anomalies endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==================== STATS ENDPOINTS ====================
+@app.get("/api/stats")
 @app.get("/api/v1/stats")
 async def get_statistics():
     """Get system statistics"""
@@ -548,7 +831,7 @@ async def get_statistics():
         print(f"❌ Error in get_statistics endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# FIXED WEBSOCKET ENDPOINT
+# ==================== WEBSOCKET ENDPOINT ====================
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time data - FIXED VERSION"""
@@ -578,11 +861,87 @@ async def websocket_endpoint(websocket: WebSocket):
                 if data:
                     try:
                         message = json.loads(data)
-                        if message.get("type") == "ping":
+                        message_type = message.get("type", "unknown")
+                        
+                        if message_type == "ping":
                             await websocket.send_json({
                                 "type": "pong",
                                 "timestamp": datetime.now(pytz.UTC).isoformat()
                             })
+                        elif message_type == "request_flights":
+                            mode = message.get("mode", "live")
+                            print(f"📡 Client requested flights in {mode} mode")
+                            
+                            # Generate response based on mode
+                            if mode == "live":
+                                import random
+                                from datetime import datetime
+                                
+                                airlines = ["UAL", "AAL", "DAL", "BAW", "AFR"]
+                                airports = ["JFK", "LAX", "LHR", "CDG", "DFW"]
+                                
+                                flights = []
+                                for i in range(1, 21):
+                                    flight = {
+                                        "icao24": f"{random.randint(100000, 999999):x}",
+                                        "callsign": f"{random.choice(airlines)}{random.randint(100, 999)}",
+                                        "airline": random.choice(airlines),
+                                        "origin": random.choice(airports),
+                                        "destination": random.choice(airports),
+                                        "latitude": random.uniform(25, 50),
+                                        "longitude": random.uniform(-125, -65),
+                                        "altitude_ft": random.randint(25000, 41000),
+                                        "speed_knots": random.randint(400, 550),
+                                        "flight_phase": "Cruise",
+                                        "is_anomaly": random.random() < 0.1,
+                                        "anomaly_score": random.uniform(0, 1),
+                                        "passenger_count": random.randint(50, 250)
+                                    }
+                                    flights.append(flight)
+                                
+                                await websocket.send_json({
+                                    "type": "flight_data",
+                                    "mode": "live",
+                                    "flights": flights,
+                                    "timestamp": datetime.now(pytz.UTC).isoformat()
+                                })
+                            else:
+                                await websocket.send_json({
+                                    "type": "flight_data",
+                                    "mode": "snapshot",
+                                    "flights": [],
+                                    "message": "Please select a dataset first",
+                                    "timestamp": datetime.now(pytz.UTC).isoformat()
+                                })
+                        elif message_type == "request_passengers":
+                            flight_callsign = message.get("flight_callsign", "UNKNOWN")
+                            print(f"👥 Client requested passengers for {flight_callsign}")
+                            
+                            import random
+                            from datetime import datetime
+                            
+                            first_names = ["John", "Jane", "Michael", "Sarah"]
+                            last_names = ["Smith", "Johnson", "Williams", "Brown"]
+                            
+                            passengers = []
+                            for i in range(1, random.randint(20, 50)):
+                                passenger = {
+                                    "passenger_id": f"PAX{i:04d}",
+                                    "flight_callsign": flight_callsign,
+                                    "name": f"{random.choice(first_names)} {random.choice(last_names)}",
+                                    "seat": f"{random.randint(1, 30)}{random.choice(['A','B','C','D','E','F'])}",
+                                    "booking_class": random.choice(["Economy", "Business", "First"]),
+                                    "status": random.choice(["Checked-in", "Boarded", "Not Checked-in"])
+                                }
+                                passengers.append(passenger)
+                            
+                            await websocket.send_json({
+                                "type": "passenger_data",
+                                "flight_callsign": flight_callsign,
+                                "passengers": passengers,
+                                "timestamp": datetime.now(pytz.UTC).isoformat()
+                            })
+                        
                     except json.JSONDecodeError:
                         # Echo non-JSON messages
                         await websocket.send_json({
@@ -616,25 +975,8 @@ async def websocket_endpoint(websocket: WebSocket):
         except:
             pass
 
-@app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-    """Global exception handler"""
-    error_detail = str(exc)
-    error_type = type(exc).__name__
-    
-    print(f"❌ Unhandled exception: {error_type}: {error_detail}")
-    
-    return JSONResponse(
-        status_code=500,
-        content={
-            "message": "Internal server error",
-            "detail": error_detail,
-            "type": error_type,
-            "timestamp": datetime.now(pytz.UTC).isoformat()
-        }
-    )
-
-# Development/test endpoints
+# ==================== TEST AND DEBUG ENDPOINTS ====================
+@app.get("/api/test/flight")
 @app.get("/api/v1/test/flight")
 async def test_flight():
     """Generate a test flight for development"""
@@ -663,19 +1005,7 @@ async def test_flight():
     
     return test_flight
 
-@app.get("/api/v1/reset")
-async def reset_system():
-    """Reset system (development only)"""
-    # Note: In production, this would require authentication
-    print("🔄 System reset requested")
-    
-    return {
-        "message": "System reset initiated",
-        "timestamp": datetime.now(pytz.UTC).isoformat(),
-        "note": "This is a development endpoint"
-    }
-
-# Additional test endpoint for WebSocket debugging
+@app.get("/api/ws-info")
 @app.get("/api/v1/ws-info")
 async def websocket_info():
     """Get WebSocket connection information"""
@@ -684,8 +1014,27 @@ async def websocket_info():
         "status": "operational" if manager.active_connections else "no_connections",
         "timestamp": datetime.now(pytz.UTC).isoformat(),
         "endpoint": "ws://localhost:8000/ws",
-        "supported_messages": ["ping", "pong", "connection_established", "flight_update"]
+        "supported_messages": ["ping", "pong", "connection_established", "flight_update", "request_flights", "request_passengers"]
     }
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    """Global exception handler"""
+    error_detail = str(exc)
+    error_type = type(exc).__name__
+    
+    print(f"❌ Unhandled exception: {error_type}: {error_detail}")
+    traceback.print_exc()
+    
+    return JSONResponse(
+        status_code=500,
+        content={
+            "message": "Internal server error",
+            "detail": error_detail,
+            "type": error_type,
+            "timestamp": datetime.now(pytz.UTC).isoformat()
+        }
+    )
 
 if __name__ == "__main__":
     print(f"""
