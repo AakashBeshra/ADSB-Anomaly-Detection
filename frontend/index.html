@@ -1,0 +1,2173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADS-B Anomaly Detection Dashboard</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0f1e 0%, #1a1f2e 100%);
+            color: #ffffff;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        .dashboard {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            padding: 15px;
+            gap: 15px;
+            max-width: 100%;
+        }
+        
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            background: linear-gradient(135deg, #1a237e 0%, #283593 100%);
+            border-radius: 12px;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .logo {
+            font-size: 28px;
+            color: #00b4d8;
+            animation: spin 20s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .header-title h1 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        
+        .header-title p {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        
+        .header-stats {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-connected {
+            background: #00ff88;
+            box-shadow: 0 0 8px #00ff88;
+        }
+        
+        .status-disconnected {
+            background: #ff4444;
+            box-shadow: 0 0 8px #ff4444;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        /* Mode Selector */
+        .mode-selector {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin: 10px 0;
+        }
+        
+        .mode-btn {
+            padding: 10px 20px;
+            background: rgba(59, 130, 246, 0.3);
+            border: 1px solid rgba(59, 130, 246, 0.5);
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            color: white;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .mode-btn:hover {
+            background: rgba(59, 130, 246, 0.5);
+            transform: translateY(-2px);
+        }
+        
+        .mode-btn.active {
+            background: #007bff;
+            color: white;
+            border-color: #0056b3;
+            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+        }
+        
+        .snapshot-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            background: rgba(26, 31, 46, 0.8);
+            padding: 12px 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin: 10px 0;
+        }
+        
+        .snapshot-controls select {
+            padding: 8px 12px;
+            background: rgba(26, 31, 46, 0.9);
+            border: 1px solid rgba(59, 130, 246, 0.5);
+            color: white;
+            border-radius: 6px;
+            min-width: 200px;
+            font-size: 12px;
+        }
+        
+        .time-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .time-controls input[type="range"] {
+            width: 120px;
+            background: rgba(59, 130, 246, 0.3);
+            border-radius: 4px;
+        }
+        
+        .load-btn {
+            padding: 8px 16px;
+            background: rgba(40, 167, 69, 0.3);
+            color: white;
+            border: 1px solid rgba(40, 167, 69, 0.5);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .load-btn:hover {
+            background: rgba(40, 167, 69, 0.5);
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, rgba(30, 58, 138, 0.8) 0%, rgba(59, 130, 246, 0.8) 100%);
+            padding: 15px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+        
+        .stat-card.anomaly {
+            background: linear-gradient(135deg, rgba(220, 38, 38, 0.8) 0%, rgba(239, 68, 68, 0.8) 100%);
+        }
+        
+        .stat-card.operational {
+            background: linear-gradient(135deg, rgba(5, 150, 105, 0.8) 0%, rgba(16, 185, 129, 0.8) 100%);
+        }
+        
+        .stat-card.coverage {
+            background: linear-gradient(135deg, rgba(147, 51, 234, 0.8) 0%, rgba(168, 85, 247, 0.8) 100%);
+        }
+        
+        .stat-icon {
+            font-size: 20px;
+            margin-bottom: 8px;
+            opacity: 0.9;
+        }
+        
+        .stat-card h3 {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .stat-value {
+            font-size: 28px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+        
+        .stat-trend {
+            font-size: 11px;
+            opacity: 0.8;
+        }
+        
+        .main-layout {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            flex: 1;
+            min-height: 0;
+        }
+        
+        .table-container {
+            background: rgba(26, 31, 46, 0.8);
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            height: 280px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .table-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #60a5fa;
+        }
+        
+        .table-title i {
+            font-size: 18px;
+        }
+        
+        .table-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .table-search {
+            position: relative;
+        }
+        
+        #tableSearch {
+            padding: 8px 12px 8px 32px;
+            background: rgba(26, 31, 46, 0.9);
+            border: 1px solid rgba(59, 130, 246, 0.5);
+            color: white;
+            border-radius: 8px;
+            width: 200px;
+            font-size: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        #tableSearch:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+            width: 250px;
+        }
+        
+        #tableSearch::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 11px;
+        }
+        
+        .table-search-icon {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+        }
+        
+        .table-btn {
+            padding: 8px 12px;
+            background: rgba(59, 130, 246, 0.3);
+            border: 1px solid rgba(59, 130, 246, 0.5);
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .table-btn:hover {
+            background: rgba(59, 130, 246, 0.5);
+        }
+        
+        .table-wrapper {
+            flex: 1;
+            overflow: auto;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .flight-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 1000px;
+            table-layout: fixed;
+        }
+        
+        .flight-table th:nth-child(1),
+        .flight-table td:nth-child(1) {
+            width: 100px;
+            min-width: 100px;
+            max-width: 100px;
+        }
+        
+        .flight-table th:nth-child(2),
+        .flight-table td:nth-child(2) {
+            width: 90px;
+            min-width: 90px;
+            max-width: 90px;
+        }
+        
+        .flight-table th:nth-child(3),
+        .flight-table td:nth-child(3) {
+            width: 120px;
+            min-width: 120px;
+            max-width: 120px;
+        }
+        
+        .flight-table th:nth-child(4),
+        .flight-table td:nth-child(4) {
+            width: 100px;
+            min-width: 100px;
+            max-width: 100px;
+        }
+        
+        .flight-table th:nth-child(5),
+        .flight-table td:nth-child(5) {
+            width: 90px;
+            min-width: 90px;
+            max-width: 90px;
+        }
+        
+        .flight-table th:nth-child(6),
+        .flight-table td:nth-child(6) {
+            width: 90px;
+            min-width: 90px;
+            max-width: 90px;
+        }
+        
+        .flight-table th:nth-child(7),
+        .flight-table td:nth-child(7) {
+            width: 120px;
+            min-width: 120px;
+            max-width: 120px;
+        }
+        
+        .flight-table th:nth-child(8),
+        .flight-table td:nth-child(8) {
+            width: 90px;
+            min-width: 90px;
+            max-width: 90px;
+        }
+        
+        .flight-table th:nth-child(9),
+        .flight-table td:nth-child(9) {
+            width: 70px;
+            min-width: 70px;
+            max-width: 70px;
+            text-align: center;
+        }
+        
+        .flight-table th:nth-child(10),
+        .flight-table td:nth-child(10) {
+            width: 70px;
+            min-width: 70px;
+            max-width: 70px;
+            text-align: center;
+        }
+        
+        .flight-table th {
+            background: rgba(30, 58, 138, 0.5);
+            padding: 10px 6px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 11px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .flight-table td {
+            padding: 8px 6px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            vertical-align: middle;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 11px;
+        }
+        
+        .flight-table tr:hover {
+            background: rgba(59, 130, 246, 0.1);
+        }
+        
+        .flight-table tr.anomaly-row {
+            background: rgba(220, 38, 38, 0.05);
+        }
+        
+        .flight-table tr.anomaly-row:hover {
+            background: rgba(220, 38, 38, 0.1);
+        }
+        
+        .score-bar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .score-track {
+            flex: 1;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+            min-width: 50px;
+        }
+        
+        .score-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.5s ease;
+        }
+        
+        .score-low { background: #10b981; }
+        .score-medium { background: #f59e0b; }
+        .score-high { background: #ef4444; }
+        
+        .score-text {
+            font-size: 10px;
+            font-weight: 600;
+            min-width: 30px;
+            text-align: right;
+        }
+        
+        .status-badge {
+            padding: 3px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 600;
+            text-align: center;
+            display: inline-block;
+            min-width: 60px;
+        }
+        
+        .status-normal {
+            background: rgba(16, 185, 129, 0.2);
+            color: #6ee7b7;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        
+        .status-anomaly {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        
+        .action-btn {
+            padding: 3px 6px;
+            background: rgba(59, 130, 246, 0.3);
+            border: 1px solid rgba(59, 130, 246, 0.5);
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 10px;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            min-width: 25px;
+        }
+        
+        .action-btn:hover {
+            background: rgba(59, 130, 246, 0.5);
+            transform: scale(1.05);
+        }
+        
+        .action-btn i {
+            font-size: 9px;
+        }
+        
+        .map-section {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 15px;
+            flex: 1;
+            min-height: 0;
+        }
+        
+        @media (max-width: 1200px) {
+            .map-section {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .map-container {
+            background: rgba(26, 31, 46, 0.8);
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .map-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .map-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #60a5fa;
+        }
+        
+        .map-title i {
+            font-size: 18px;
+        }
+        
+        #map {
+            flex: 1;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .map-controls {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .map-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .map-btn {
+            padding: 6px 12px;
+            background: rgba(59, 130, 246, 0.3);
+            border: 1px solid rgba(59, 130, 246, 0.5);
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: background 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .map-btn:hover {
+            background: rgba(59, 130, 246, 0.5);
+        }
+        
+        .map-btn i {
+            font-size: 10px;
+        }
+        
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .alerts-panel {
+            background: rgba(26, 31, 46, 0.8);
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .alerts-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .alerts-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #60a5fa;
+        }
+        
+        .alerts-title i {
+            font-size: 18px;
+        }
+        
+        .alerts-list {
+            flex: 1;
+            overflow-y: auto;
+            max-height: 200px;
+        }
+        
+        .alert-item {
+            background: rgba(220, 38, 38, 0.1);
+            border-left: 3px solid #dc2626;
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            transition: transform 0.2s ease;
+        }
+        
+        .alert-item:hover {
+            transform: translateX(3px);
+            background: rgba(220, 38, 38, 0.15);
+        }
+        
+        .alert-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+        
+        .alert-callsign {
+            font-weight: 600;
+            color: #fca5a5;
+            font-size: 11px;
+        }
+        
+        .alert-type {
+            font-size: 11px;
+            margin-bottom: 2px;
+        }
+        
+        .alert-details {
+            font-size: 10px;
+            opacity: 0.8;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .alert-severity {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        
+        .severity-high {
+            background: rgba(220, 38, 38, 0.3);
+            color: #fca5a5;
+        }
+        
+        .severity-medium {
+            background: rgba(245, 158, 11, 0.3);
+            color: #fcd34d;
+        }
+        
+        .severity-low {
+            background: rgba(16, 185, 129, 0.3);
+            color: #6ee7b7;
+        }
+        
+        .chart-container {
+            background: rgba(26, 31, 46, 0.8);
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            height: 250px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .chart-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #60a5fa;
+        }
+        
+        .chart-header i {
+            font-size: 18px;
+        }
+        
+        .chart-wrapper {
+            flex: 1;
+            position: relative;
+        }
+        
+        .table-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+            font-size: 10px;
+            opacity: 0.7;
+        }
+        
+        .table-stats {
+            display: flex;
+            gap: 12px;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(59, 130, 246, 0.5);
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(59, 130, 246, 0.7);
+        }
+        
+        .loading {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 15, 30, 0.95);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .loading.active {
+            display: flex;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(59, 130, 246, 0.3);
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        .loading-text {
+            font-size: 16px;
+            color: #60a5fa;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: rgba(26, 31, 46, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 12px;
+            color: white;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+            max-width: 250px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .tooltip h4 {
+            margin-bottom: 6px;
+            color: #60a5fa;
+            font-size: 13px;
+        }
+        
+        .tooltip p {
+            margin: 4px 0;
+            opacity: 0.9;
+            font-size: 11px;
+        }
+        
+        .notification {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            padding: 12px 15px;
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+            border-radius: 8px;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+            z-index: 10000;
+            animation: slideIn 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
+        
+        @media (max-width: 1400px) {
+            .flight-table {
+                min-width: 900px;
+            }
+            
+            .flight-table th:nth-child(3),
+            .flight-table td:nth-child(3) {
+                width: 100px;
+                min-width: 100px;
+                max-width: 100px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 10px;
+                text-align: center;
+            }
+            
+            .header-stats {
+                width: 100%;
+                justify-content: center;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .table-controls {
+                flex-wrap: wrap;
+                justify-content: flex-end;
+            }
+            
+            #tableSearch {
+                width: 150px;
+            }
+            
+            #tableSearch:focus {
+                width: 180px;
+            }
+            
+            .snapshot-controls {
+                flex-wrap: wrap;
+            }
+        }
+        
+        /* Passenger Modal */
+        .passenger-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .passenger-modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: linear-gradient(135deg, #1a237e 0%, #283593 100%);
+            border-radius: 12px;
+            padding: 25px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #60a5fa;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .close-modal {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 5px;
+        }
+        
+        .passenger-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 12px;
+            margin-top: 15px;
+        }
+        
+        .passenger-card {
+            background: rgba(26, 31, 46, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #00b4d8;
+        }
+        
+        .passenger-id {
+            font-weight: bold;
+            color: #00b4d8;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+        
+        .passenger-info {
+            font-size: 11px;
+            line-height: 1.5;
+        }
+        
+        .passenger-info strong {
+            color: #60a5fa;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <div class="loading-text">Initializing ADS-B System...</div>
+    </div>
+
+    <!-- Passenger Modal -->
+    <div class="passenger-modal" id="passengerModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title" id="modalFlightTitle">
+                    <i class="fas fa-users"></i>
+                    <span>Passenger Manifest</span>
+                </div>
+                <button class="close-modal" onclick="closePassengerModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div id="passengerList">
+                <!-- Passenger data will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div class="dashboard">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <div class="logo">
+                    <i class="fas fa-satellite"></i>
+                </div>
+                <div class="header-title">
+                    <h1>ADS-B Anomaly Detection</h1>
+                    <p>Live Flight Monitoring & Historical Dataset Analysis</p>
+                </div>
+            </div>
+            <div class="header-stats">
+                <div class="connection-status">
+                    <div class="status-indicator status-connected" id="statusIndicator"></div>
+                    <span id="connectionStatus">Connected</span>
+                    <span id="connectionCount">(0)</span>
+                </div>
+                <div class="timestamp" id="headerTimestamp">--:--:--</div>
+            </div>
+        </div>
+
+        <!-- Mode Selector -->
+        <div class="mode-selector">
+            <button id="liveModeBtn" class="mode-btn active" onclick="setMode('live')">
+                <i class="fas fa-satellite"></i> Live Mode
+            </button>
+            <button id="snapshotModeBtn" class="mode-btn" onclick="setMode('snapshot')">
+                <i class="fas fa-database"></i> Snapshot Mode
+            </button>
+        </div>
+
+        <!-- Snapshot Controls (Hidden by default) -->
+        <div id="snapshotControls" class="snapshot-controls" style="display: none;">
+            <select id="datasetSelect" onchange="loadSelectedDataset()">
+                <option value="">Select Dataset</option>
+                <!-- Options populated by JavaScript -->
+            </select>
+            
+            <div class="time-controls">
+                <span>Time: </span>
+                <input type="range" id="timeSlider" min="0" max="100" value="0" 
+                       oninput="updateTimeDisplay(this.value)">
+                <span id="timeDisplay">00:00</span>
+            </div>
+            
+            <button onclick="loadSnapshot()" class="load-btn">
+                <i class="fas fa-sync-alt"></i> Load
+            </button>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-plane"></i></div>
+                <h3>Active Flights</h3>
+                <div class="stat-value" id="totalFlights">0</div>
+                <div class="stat-trend" id="flightTrend">Live tracking</div>
+            </div>
+            <div class="stat-card anomaly">
+                <div class="stat-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                <h3>Anomalies Detected</h3>
+                <div class="stat-value" id="totalAnomalies">0</div>
+                <div class="stat-trend" id="anomalyTrend">0% anomaly rate</div>
+            </div>
+            <div class="stat-card operational">
+                <div class="stat-icon"><i class="fas fa-shield-alt"></i></div>
+                <h3>System Status</h3>
+                <div class="stat-value" id="systemStatus">LIVE</div>
+                <div class="stat-trend" id="statusDetail">Live Mode Active</div>
+            </div>
+            <div class="stat-card coverage">
+                <div class="stat-icon"><i class="fas fa-database"></i></div>
+                <h3>Datasets</h3>
+                <div class="stat-value" id="datasetCount">30</div>
+                <div class="stat-trend" id="datasetDetail">Historical data available</div>
+            </div>
+        </div>
+
+        <!-- Flight Table -->
+        <div class="main-layout">
+            <div class="table-container">
+                <div class="table-header">
+                    <div class="table-title">
+                        <i class="fas fa-table"></i>
+                        <span id="tableTitle">Live Flight Data</span>
+                    </div>
+                    <div class="table-controls">
+                        <div class="table-search">
+                            <i class="fas fa-search table-search-icon"></i>
+                            <input type="text" id="tableSearch" placeholder="Search flights...">
+                        </div>
+                        <button class="table-btn" onclick="refreshData()">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                        <button class="table-btn" onclick="showPassengerModal()">
+                            <i class="fas fa-users"></i> Passengers
+                        </button>
+                        <button class="table-btn" onclick="exportData()">
+                            <i class="fas fa-download"></i> Export
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="table-wrapper">
+                    <table class="flight-table" id="flightTable">
+                        <thead>
+                            <tr>
+                                <th>Callsign</th>
+                                <th>Airline</th>
+                                <th>Route</th>
+                                <th>Altitude</th>
+                                <th>Speed</th>
+                                <th>Phase</th>
+                                <th>Anomaly Score</th>
+                                <th>Status</th>
+                                <th>Passengers</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="flightTableBody">
+                            <!-- Flight data will be inserted here -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="table-info">
+                    <div class="table-stats">
+                        <span id="tableCount">0 flights</span>
+                        <span id="anomalyCount">0 anomalies</span>
+                        <span id="updateTime">Last: --:--:--</span>
+                    </div>
+                    <div>Mode: <span id="currentModeDisplay">Live</span></div>
+                </div>
+            </div>
+
+            <!-- Map and Sidebar Section -->
+            <div class="map-section">
+                <!-- Map Container -->
+                <div class="map-container">
+                    <div class="map-header">
+                        <div class="map-title">
+                            <i class="fas fa-map-marked-alt"></i>
+                            <span id="mapTitle">Real-time Flight Map</span>
+                        </div>
+                        <div class="timestamp" id="mapTimestamp">Last update: --:--:--</div>
+                    </div>
+                    <div id="map"></div>
+                    <div class="map-controls">
+                        <div class="map-buttons">
+                            <button class="map-btn" onclick="zoomToFlights()">
+                                <i class="fas fa-search"></i> Zoom
+                            </button>
+                            <button class="map-btn" onclick="clearMap()">
+                                <i class="fas fa-trash"></i> Clear
+                            </button>
+                            <button class="map-btn" onclick="toggleAnomalies()">
+                                <i class="fas fa-eye"></i> Toggle
+                            </button>
+                        </div>
+                        <div class="timestamp" id="mapStatus">Showing all flights</div>
+                    </div>
+                </div>
+
+                <!-- Sidebar -->
+                <div class="sidebar">
+                    <!-- Alerts Panel -->
+                    <div class="alerts-panel">
+                        <div class="alerts-header">
+                            <div class="alerts-title">
+                                <i class="fas fa-bell"></i>
+                                <span>Recent Alerts</span>
+                            </div>
+                            <div class="timestamp" id="alertsTimestamp">--:--:--</div>
+                        </div>
+                        <div class="alerts-list" id="alertsList">
+                            <div style="text-align: center; padding: 30px 15px; opacity: 0.6;">
+                                <i class="fas fa-inbox" style="font-size: 24px; margin-bottom: 8px;"></i>
+                                <p style="font-size: 12px;">No alerts detected</p>
+                            </div>
+                        </div>
+                        <div class="controls" style="margin-top: 10px;">
+                            <button class="table-btn" onclick="clearAlerts()">
+                                <i class="fas fa-trash"></i> Clear Alerts
+                            </button>
+                            <div class="timestamp" style="margin-left: auto;">
+                                <span id="alertsCount">0</span> alerts
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Anomaly Chart -->
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <i class="fas fa-chart-bar"></i>
+                            <span>Anomaly Distribution</span>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="anomalyChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Connection Panel -->
+    <div class="connection-panel" style="position: fixed; bottom: 20px; right: 20px; z-index: 1000; background: rgba(26, 31, 46, 0.9); padding: 10px 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); font-size: 12px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <div class="status-indicator" id="debugStatusIndicator" style="width: 8px; height: 8px; border-radius: 50%; background: #ff4444;"></div>
+            <span id="debugStatusText">Testing connection...</span>
+        </div>
+        <div style="font-size: 10px; opacity: 0.7; margin-top: 5px;">
+            <div>Backend: <span id="backendStatus">Checking...</span></div>
+            <div>WebSocket: <span id="wsStatus">Checking...</span></div>
+            <div>Mode: <span id="modeStatus">Live</span></div>
+        </div>
+    </div>
+
+    <!-- Tooltip -->
+    <div class="tooltip" id="tooltip" style="display: none;"></div>
+
+    <script>
+        // Global variables
+        let map = null;
+        let markers = {};
+        let socket = null;
+        let isConnected = false;
+        let updateCounter = 0;
+        let anomalyChart = null;
+        let showAnomalies = true;
+        let lastData = null;
+        let allFlights = [];
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 10;
+        let currentMode = 'live';
+        let currentDataset = null;
+        let currentTimeIndex = 0;
+        let availableDatasets = [];
+        
+        // Initialize everything when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Initializing ADS-B Dashboard with Dual Mode...');
+            showLoading(true, 'Initializing ADS-B System...');
+            
+            // Initialize components
+            setTimeout(() => {
+                initMap();
+                initChart();
+                setupSearch();
+                initWebSocket();
+                loadDatasets();
+                updateDebugPanel('Initializing...');
+            }, 1000);
+            
+            // Update header timestamp every second
+            setInterval(() => {
+                const now = new Date();
+                document.getElementById('headerTimestamp').textContent = 
+                    now.toLocaleTimeString('en-US', {hour12: false});
+            }, 1000);
+            
+            console.log('✅ Dashboard initialized');
+        });
+        
+        // Initialize WebSocket connection
+        function initWebSocket() {
+            const wsUrl = window.location.hostname === 'localhost' 
+                ? 'ws://localhost:3000' 
+                : `ws://${window.location.hostname}:3000`;
+            
+            console.log(`🔌 Connecting to WebSocket: ${wsUrl}`);
+            updateDebugPanel('Connecting to WebSocket...');
+            updateDebugWsStatus('Connecting...');
+            showLoading(true, 'Connecting to WebSocket...');
+            
+            socket = io(wsUrl);
+            
+            socket.on('connect', () => {
+                console.log('✅ WebSocket connected');
+                isConnected = true;
+                reconnectAttempts = 0;
+                updateDebugPanel('Connected');
+                updateDebugWsStatus('✅ Connected');
+                updateConnectionStatus(true, 'Connected');
+                showLoading(false);
+                showNotification('✅ Connected to ADS-B system', 'success');
+                
+                // Request initial data based on current mode
+                requestFlights();
+            });
+            
+            socket.on('flight_data', (data) => {
+                console.log('📨 Received flight data:', data.mode);
+                handleFlightData(data);
+            });
+            
+            socket.on('passenger_data', (data) => {
+                console.log('👥 Received passenger data for:', data.flight_callsign);
+                updatePassengerModal(data.flight_callsign, data.passengers);
+            });
+            
+            socket.on('connected', (data) => {
+                console.log('Server connected:', data.status);
+            });
+            
+            socket.on('disconnect', () => {
+                console.log('🔌 WebSocket disconnected');
+                isConnected = false;
+                updateDebugWsStatus('❌ Disconnected');
+                updateDebugPanel('Disconnected');
+                updateConnectionStatus(false, 'Disconnected');
+                
+                // Try to reconnect
+                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    reconnectAttempts++;
+                    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+                    console.log(`🔄 Reconnecting in ${delay/1000} seconds...`);
+                    
+                    setTimeout(() => {
+                        initWebSocket();
+                    }, delay);
+                }
+            });
+        }
+        
+        // Load available datasets
+        async function loadDatasets() {
+            try {
+                const response = await fetch('/api/datasets');
+                availableDatasets = await response.json();
+                console.log('📂 Loaded datasets:', availableDatasets.length);
+                
+                // Update dataset count
+                document.getElementById('datasetCount').textContent = availableDatasets.length;
+                
+                // Populate dataset dropdown
+                const select = document.getElementById('datasetSelect');
+                availableDatasets.forEach(dataset => {
+                    const option = document.createElement('option');
+                    option.value = dataset.id;
+                    option.textContent = `${dataset.name} (${dataset.flights} flights)`;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading datasets:', error);
+            }
+        }
+        
+        // Set display mode
+        function setMode(mode) {
+            currentMode = mode;
+            
+            // Update UI
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`${mode}ModeBtn`).classList.add('active');
+            
+            // Show/hide snapshot controls
+            const controls = document.getElementById('snapshotControls');
+            if (mode === 'snapshot') {
+                controls.style.display = 'flex';
+                document.getElementById('tableTitle').textContent = 'Historical Flight Data';
+                document.getElementById('mapTitle').textContent = 'Historical Flight Map';
+                document.getElementById('currentModeDisplay').textContent = 'Snapshot';
+                document.getElementById('modeStatus').textContent = 'Snapshot';
+                document.getElementById('systemStatus').textContent = 'SNAPSHOT';
+                document.getElementById('statusDetail').textContent = 'Historical Data Mode';
+            } else {
+                controls.style.display = 'none';
+                document.getElementById('tableTitle').textContent = 'Live Flight Data';
+                document.getElementById('mapTitle').textContent = 'Real-time Flight Map';
+                document.getElementById('currentModeDisplay').textContent = 'Live';
+                document.getElementById('modeStatus').textContent = 'Live';
+                document.getElementById('systemStatus').textContent = 'LIVE';
+                document.getElementById('statusDetail').textContent = 'Live Mode Active';
+            }
+            
+            // Send mode change to server
+            fetch('/api/set-mode', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ mode: mode })
+            });
+            
+            // Request data in new mode
+            requestFlights();
+        }
+        
+        // Load selected dataset
+        function loadSelectedDataset() {
+            const select = document.getElementById('datasetSelect');
+            currentDataset = select.value;
+            
+            if (currentDataset) {
+                // Update dataset info
+                fetch(`/api/dataset/${currentDataset}`)
+                    .then(response => response.json())
+                    .then(info => {
+                        console.log('Dataset info:', info);
+                        // Update time slider based on dataset
+                        updateTimeSlider(info);
+                    });
+            }
+        }
+        
+        // Update time slider
+        function updateTimeSlider(datasetInfo) {
+            // For now, use a simple 0-100 range
+            // You could map this to actual timestamps from the dataset
+            document.getElementById('timeSlider').max = 100;
+            document.getElementById('timeSlider').value = 0;
+            updateTimeDisplay(0);
+        }
+        
+        // Update time display
+        function updateTimeDisplay(value) {
+            const hours = Math.floor(value / 4);
+            const minutes = (value % 4) * 15;
+            document.getElementById('timeDisplay').textContent = 
+                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+            currentTimeIndex = parseInt(value);
+        }
+        
+        // Load snapshot
+        function loadSnapshot() {
+            if (!currentDataset) {
+                alert('Please select a dataset first');
+                return;
+            }
+            
+            if (socket && socket.connected) {
+                socket.emit('request_flights', {
+                    mode: 'snapshot',
+                    dataset_id: currentDataset,
+                    time_index: currentTimeIndex
+                });
+                showNotification(`Loading snapshot from ${currentDataset}...`);
+            }
+        }
+        
+        // Request flight data
+        function requestFlights() {
+            if (socket && socket.connected) {
+                if (currentMode === 'live') {
+                    socket.emit('request_flights', { mode: 'live' });
+                } else if (currentMode === 'snapshot' && currentDataset) {
+                    socket.emit('request_flights', {
+                        mode: 'snapshot',
+                        dataset_id: currentDataset,
+                        time_index: currentTimeIndex
+                    });
+                } else if (currentMode === 'snapshot') {
+                    // If snapshot mode but no dataset selected, show message
+                    showNotification('Please select a dataset first', 'warning');
+                }
+            }
+        }
+        
+        // Update connection status display
+        function updateConnectionStatus(connected, message = '') {
+            const indicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('connectionStatus');
+            
+            if (connected) {
+                indicator.className = 'status-indicator status-connected';
+                statusText.textContent = message || 'Connected';
+                statusText.style.color = '#00ff88';
+            } else {
+                indicator.className = 'status-indicator status-disconnected';
+                statusText.textContent = message || 'Disconnected';
+                statusText.style.color = '#ff4444';
+            }
+        }
+        
+        // Update debug panel
+        function updateDebugPanel(status) {
+            const indicator = document.getElementById('debugStatusIndicator');
+            const statusText = document.getElementById('debugStatusText');
+            
+            if (status.toLowerCase().includes('connected')) {
+                indicator.style.background = '#00ff88';
+                statusText.textContent = status;
+                statusText.style.color = '#00ff88';
+            } else if (status.toLowerCase().includes('error') || status.toLowerCase().includes('failed')) {
+                indicator.style.background = '#ff4444';
+                statusText.textContent = status;
+                statusText.style.color = '#ff4444';
+            } else {
+                indicator.style.background = '#ffc107';
+                statusText.textContent = status;
+                statusText.style.color = '#ffc107';
+            }
+        }
+        
+        function updateDebugBackendStatus(status) {
+            document.getElementById('backendStatus').textContent = status;
+        }
+        
+        function updateDebugWsStatus(status) {
+            document.getElementById('wsStatus').textContent = status;
+        }
+        
+        // Show/hide loading overlay
+        function showLoading(show, message = '') {
+            const loading = document.getElementById('loading');
+            const loadingText = document.querySelector('.loading-text');
+            
+            if (show) {
+                if (message) loadingText.textContent = message;
+                loading.classList.add('active');
+            } else {
+                loading.classList.remove('active');
+            }
+        }
+        
+        // Initialize map
+        function initMap() {
+            map = L.map('map').setView([20, 0], 2);
+            
+            // Add tile layer
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 18,
+            }).addTo(map);
+            
+            console.log('🗺️ Map initialized');
+        }
+        
+        // Initialize anomaly chart
+        function initChart() {
+            const ctx = document.getElementById('anomalyChart').getContext('2d');
+            anomalyChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Normal', 'Low Risk', 'Medium Risk', 'High Risk'],
+                    datasets: [{
+                        data: [85, 5, 7, 3],
+                        backgroundColor: [
+                            'rgba(16, 185, 129, 0.8)',
+                            'rgba(59, 130, 246, 0.8)',
+                            'rgba(245, 158, 11, 0.8)',
+                            'rgba(239, 68, 68, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgba(16, 185, 129, 1)',
+                            'rgba(59, 130, 246, 1)',
+                            'rgba(245, 158, 11, 1)',
+                            'rgba(239, 68, 68, 1)'
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: 'rgba(255, 255, 255, 0.8)',
+                                padding: 15,
+                                font: {
+                                    size: 10
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(26, 31, 46, 0.95)',
+                            titleColor: '#60a5fa',
+                            bodyColor: 'rgba(255, 255, 255, 0.9)',
+                            borderColor: 'rgba(255, 255, 255, 0.1)',
+                            borderWidth: 1
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Setup search functionality
+        function setupSearch() {
+            const searchInput = document.getElementById('tableSearch');
+            
+            searchInput.addEventListener('input', function(e) {
+                const term = e.target.value.trim();
+                filterFlights(term);
+            });
+        }
+        
+        // Handle flight data from WebSocket
+        function handleFlightData(data) {
+            const { flights, mode } = data;
+            lastData = data;
+            allFlights = flights;
+            
+            // Update stats
+            const totalFlights = flights.length;
+            const anomalyCount = flights.filter(f => f.is_anomaly).length;
+            
+            document.getElementById('totalFlights').textContent = totalFlights;
+            document.getElementById('totalAnomalies').textContent = anomalyCount;
+            document.getElementById('anomalyTrend').textContent = 
+                `${((anomalyCount / totalFlights) * 100).toFixed(1)}% anomaly rate`;
+            
+            // Update map
+            updateMap(flights);
+            
+            // Update flight table
+            updateFlightTable(flights);
+            
+            // Update chart
+            updateChart(flights);
+            
+            // Update timestamps
+            const timeStr = new Date().toLocaleTimeString('en-US', {hour12: false});
+            document.getElementById('mapTimestamp').textContent = `Last update: ${timeStr}`;
+            document.getElementById('alertsTimestamp').textContent = timeStr;
+            document.getElementById('updateTime').textContent = `Last: ${timeStr}`;
+            
+            // Update anomaly count in table
+            document.getElementById('anomalyCount').textContent = `${anomalyCount} anomalies`;
+            document.getElementById('tableCount').textContent = `${totalFlights} flights`;
+            
+            // Update alerts
+            updateAlerts(flights.filter(f => f.is_anomaly));
+        }
+        
+        // Update map with flights
+        function updateMap(flights) {
+            // Clear existing markers
+            Object.values(markers).forEach(marker => {
+                if (marker && marker.remove) {
+                    marker.remove();
+                }
+            });
+            markers = {};
+            
+            // Add new markers
+            flights.forEach(flight => {
+                if (!flight.latitude || !flight.longitude) return;
+                
+                const isAnomaly = flight.is_anomaly || flight.anomaly_score > 0.8;
+                
+                // Create marker
+                const marker = L.marker([flight.latitude, flight.longitude], {
+                    icon: L.icon({
+                        iconUrl: isAnomaly 
+                            ? 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png'
+                            : 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+                        iconSize: [22, 36],
+                        iconAnchor: [11, 36],
+                        popupAnchor: [1, -30]
+                    })
+                });
+                
+                // Create popup content
+                const popupContent = `
+                    <div style="min-width: 180px; font-size: 12px;">
+                        <h4 style="margin: 0 0 8px 0; color: #3b82f6; font-size: 13px;">
+                            ${flight.callsign || 'UNKNOWN'}
+                            ${isAnomaly ? '<span style="color: red;">⚠️</span>' : ''}
+                        </h4>
+                        <p><strong>Airline:</strong> ${flight.airline || 'Unknown'}</p>
+                        <p><strong>Route:</strong> ${flight.origin || '?'} → ${flight.destination || '?'}</p>
+                        <p><strong>Altitude:</strong> ${Math.round(flight.altitude_ft || 0)} ft</p>
+                        <p><strong>Speed:</strong> ${Math.round(flight.speed_knots || 0)} kts</p>
+                        <p><strong>Phase:</strong> ${flight.flight_phase || 'Unknown'}</p>
+                        ${isAnomaly ? '<p style="color: red; font-weight: bold; font-size: 11px;">ANOMALY DETECTED</p>' : ''}
+                        <button onclick="showPassengers('${flight.callsign || flight.icao24}')" 
+                                style="margin-top: 5px; padding: 3px 8px; background: #3b82f6; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px;">
+                            View Passengers
+                        </button>
+                    </div>
+                `;
+                
+                marker.bindPopup(popupContent);
+                marker.addTo(map);
+                
+                // Add hover effect
+                marker.on('mouseover', function() {
+                    showTooltip(flight, isAnomaly);
+                });
+                
+                marker.on('mouseout', function() {
+                    hideTooltip();
+                });
+                
+                markers[flight.icao24] = marker;
+            });
+            
+            // Fit map to bounds if we have flights
+            if (flights.length > 0) {
+                const bounds = L.latLngBounds(flights.map(f => [f.latitude, f.longitude]));
+                map.fitBounds(bounds, { padding: [80, 80], animate: true });
+            }
+        }
+        
+        // Update alerts panel
+        function updateAlerts(anomalies) {
+            const alertsList = document.getElementById('alertsList');
+            const alertsCount = document.getElementById('alertsCount');
+            
+            if (anomalies.length === 0) {
+                alertsList.innerHTML = `
+                    <div style="text-align: center; padding: 30px 15px; opacity: 0.6;">
+                        <i class="fas fa-inbox" style="font-size: 24px; margin-bottom: 8px;"></i>
+                        <p style="font-size: 12px;">No alerts detected</p>
+                    </div>
+                `;
+                alertsCount.textContent = '0';
+                return;
+            }
+            
+            // Clear existing alerts
+            alertsList.innerHTML = '';
+            
+            // Show recent alerts (max 6)
+            anomalies.slice(0, 6).forEach(anomaly => {
+                const alertItem = document.createElement('div');
+                alertItem.className = 'alert-item';
+                
+                const severity = anomaly.anomaly_score > 0.8 ? 'high' : 
+                                anomaly.anomaly_score > 0.6 ? 'medium' : 'low';
+                
+                alertItem.innerHTML = `
+                    <div class="alert-header">
+                        <span class="alert-callsign">${anomaly.callsign || anomaly.icao24}</span>
+                        <span class="alert-severity severity-${severity}">
+                            ${severity.toUpperCase()}
+                        </span>
+                    </div>
+                    <div class="alert-type">Anomaly Score: ${(anomaly.anomaly_score * 100).toFixed(1)}%</div>
+                    <div class="alert-details">
+                        <span>${anomaly.origin || '?'} → ${anomaly.destination || '?'}</span>
+                        <span>Score: ${(anomaly.anomaly_score * 100).toFixed(1)}%</span>
+                    </div>
+                `;
+                
+                alertsList.appendChild(alertItem);
+            });
+            
+            // Update count
+            alertsCount.textContent = anomalies.length;
+        }
+        
+        // Update flight table
+        function updateFlightTable(flights) {
+            const tableBody = document.getElementById('flightTableBody');
+            
+            if (flights.length === 0) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="10" style="text-align: center; padding: 25px; opacity: 0.6;">
+                            <i class="fas fa-plane-slash" style="font-size: 20px; margin-bottom: 8px; display: block;"></i>
+                            <p style="font-size: 11px;">No flight data available</p>
+                            <p style="font-size: 10px; margin-top: 4px;">${currentMode === 'live' ? 'Waiting for live data...' : 'Select a dataset and load snapshot'}</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            // Clear existing rows
+            tableBody.innerHTML = '';
+            
+            // Sort by anomaly score (highest first)
+            const sortedFlights = [...flights].sort((a, b) => {
+                const scoreA = a.anomaly_score || 0;
+                const scoreB = b.anomaly_score || 0;
+                return scoreB - scoreA;
+            });
+            
+            // Show flights (max 15 for better fit)
+            sortedFlights.slice(0, 15).forEach(flight => {
+                const isAnomaly = flight.is_anomaly || (flight.anomaly_score > 0.8);
+                const anomalyScore = flight.anomaly_score || 0;
+                
+                // Determine score class
+                let scoreClass = 'score-low';
+                if (anomalyScore > 0.8) scoreClass = 'score-high';
+                else if (anomalyScore > 0.6) scoreClass = 'score-medium';
+                
+                const row = document.createElement('tr');
+                if (isAnomaly) row.className = 'anomaly-row';
+                
+                row.innerHTML = `
+                    <td title="${flight.callsign || 'N/A'}">
+                        <strong style="font-size: 11px;">${flight.callsign || 'N/A'}</strong>
+                    </td>
+                    <td>
+                        <span style="font-size: 10px;">${flight.airline || 'UNK'}</span>
+                    </td>
+                    <td>
+                        <span style="font-size: 10px;">${flight.origin || '?'} → ${flight.destination || '?'}</span>
+                    </td>
+                    <td>
+                        <span style="font-size: 10px; font-weight: 600;">${Math.round(flight.altitude_ft || 0).toLocaleString()}</span>
+                        <div style="font-size: 8px; opacity: 0.7;">ft</div>
+                    </td>
+                    <td>
+                        <span style="font-size: 10px; font-weight: 600;">${Math.round(flight.speed_knots || 0)}</span>
+                        <div style="font-size: 8px; opacity: 0.7;">kts</div>
+                    </td>
+                    <td>
+                        <span style="font-size: 10px;">${flight.flight_phase || 'Unknown'}</span>
+                    </td>
+                    <td>
+                        <div class="score-bar">
+                            <div class="score-track">
+                                <div class="score-fill ${scoreClass}" style="width: ${Math.min(anomalyScore * 100, 100)}%"></div>
+                            </div>
+                            <span class="score-text">${(anomalyScore * 100).toFixed(0)}%</span>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="status-badge ${isAnomaly ? 'status-anomaly' : 'status-normal'}">
+                            ${isAnomaly ? 'ANOMALY' : 'NORMAL'}
+                        </span>
+                    </td>
+                    <td>
+                        <span style="font-size: 10px; color: #60a5fa;">${flight.passenger_count || 0}</span>
+                    </td>
+                    <td>
+                        <button class="action-btn" onclick="showPassengers('${flight.callsign || flight.icao24}')" title="View passengers">
+                            <i class="fas fa-users"></i>
+                        </button>
+                        <button class="action-btn" onclick="focusFlight('${flight.icao24}')" title="Focus on map">
+                            <i class="fas fa-search-location"></i>
+                        </button>
+                    </td>
+                `;
+                
+                tableBody.appendChild(row);
+            });
+        }
+        
+        // Show passengers for a flight
+        function showPassengers(flightId) {
+            if (socket && socket.connected) {
+                socket.emit('request_passengers', { flight_callsign: flightId });
+                showNotification(`Loading passenger data for ${flightId}...`);
+            } else {
+                showNotification('Not connected to server', 'error');
+            }
+        }
+        
+        // Update passenger modal
+        function updatePassengerModal(flightCallsign, passengers) {
+            const modal = document.getElementById('passengerModal');
+            const title = document.getElementById('modalFlightTitle');
+            const content = document.getElementById('passengerList');
+            
+            title.innerHTML = `<i class="fas fa-users"></i> Passengers on ${flightCallsign}`;
+            
+            if (!passengers || passengers.length === 0) {
+                content.innerHTML = `
+                    <div style="text-align: center; padding: 30px; opacity: 0.6;">
+                        <i class="fas fa-user-slash" style="font-size: 48px; margin-bottom: 15px;"></i>
+                        <p style="font-size: 14px;">No passenger data available</p>
+                    </div>
+                `;
+            } else {
+                content.innerHTML = `
+                    <div style="margin-bottom: 15px; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 6px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                            <span><strong>Total Passengers:</strong> ${passengers.length}</span>
+                            <span><strong>Checked-in:</strong> ${passengers.filter(p => p.status === 'Checked-in' || p.status === 'Boarded').length}</span>
+                        </div>
+                    </div>
+                    <div class="passenger-list">
+                        ${passengers.map(passenger => `
+                            <div class="passenger-card">
+                                <div class="passenger-id">${passenger.passenger_id}</div>
+                                <div class="passenger-info">
+                                    <strong>Name:</strong> ${passenger.name}<br>
+                                    <strong>Seat:</strong> ${passenger.seat}<br>
+                                    <strong>Class:</strong> ${passenger.booking_class}<br>
+                                    <strong>Status:</strong> <span style="color: ${passenger.status === 'Boarded' ? '#00ff88' : passenger.status === 'Checked-in' ? '#ffc107' : '#ff4444'}">${passenger.status}</span>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+            
+            modal.classList.add('active');
+        }
+        
+        // Close passenger modal
+        function closePassengerModal() {
+            document.getElementById('passengerModal').classList.remove('active');
+        }
+        
+        // Show passenger modal (for button click)
+        function showPassengerModal() {
+            if (allFlights.length > 0) {
+                // Show passengers for first flight as example
+                const firstFlight = allFlights[0];
+                showPassengers(firstFlight.callsign || firstFlight.icao24);
+            } else {
+                showNotification('No flight data available', 'warning');
+            }
+        }
+        
+        // Filter flights by search term
+        function filterFlights(searchTerm) {
+            if (!searchTerm.trim()) {
+                // Reset to original display
+                if (lastData) {
+                    updateFlightTable(lastData.flights);
+                }
+                return;
+            }
+            
+            const term = searchTerm.toLowerCase();
+            const filteredFlights = allFlights.filter(flight => 
+                (flight.callsign && flight.callsign.toLowerCase().includes(term)) ||
+                (flight.airline && flight.airline.toLowerCase().includes(term)) ||
+                (flight.origin && flight.origin.toLowerCase().includes(term)) ||
+                (flight.destination && flight.destination.toLowerCase().includes(term))
+            );
+            
+            updateFlightTable(filteredFlights);
+        }
+        
+        // Update chart
+        function updateChart(flights) {
+            if (!anomalyChart) return;
+            
+            // Count by anomaly score ranges
+            let highCount = 0, mediumCount = 0, lowCount = 0, normalCount = 0;
+            
+            flights.forEach(flight => {
+                const score = flight.anomaly_score || 0;
+                if (score > 0.8) highCount++;
+                else if (score > 0.6) mediumCount++;
+                else if (score > 0.3) lowCount++;
+                else normalCount++;
+            });
+            
+            // Update chart data
+            anomalyChart.data.datasets[0].data = [
+                normalCount,
+                lowCount,
+                mediumCount,
+                highCount
+            ];
+            anomalyChart.update();
+        }
+        
+        // Show tooltip
+        function showTooltip(flight, isAnomaly) {
+            const tooltip = document.getElementById('tooltip');
+            const anomalyScore = flight.anomaly_score || 0;
+            
+            tooltip.innerHTML = `
+                <h4>${flight.callsign || 'UNKNOWN'} (${flight.airline || 'UNK'})</h4>
+                <p><strong>Route:</strong> ${flight.origin || '?'} → ${flight.destination || '?'}</p>
+                <p><strong>Altitude:</strong> ${Math.round(flight.altitude_ft || 0).toLocaleString()} ft</p>
+                <p><strong>Speed:</strong> ${Math.round(flight.speed_knots || 0)} kts</p>
+                <p><strong>Phase:</strong> ${flight.flight_phase || 'Unknown'}</p>
+                <p><strong>Passengers:</strong> ${flight.passenger_count || 0}</p>
+                <p><strong>Anomaly Score:</strong> ${(anomalyScore * 100).toFixed(1)}%</p>
+                ${isAnomaly ? '<p style="color: #ef4444; font-weight: bold; font-size: 11px;">⚠️ ANOMALY DETECTED</p>' : ''}
+            `;
+            
+            tooltip.style.display = 'block';
+            document.addEventListener('mousemove', positionTooltip);
+        }
+        
+        // Position tooltip
+        function positionTooltip(e) {
+            const tooltip = document.getElementById('tooltip');
+            const x = e.clientX + 10;
+            const y = e.clientY + 10;
+            
+            const maxX = window.innerWidth - tooltip.offsetWidth - 15;
+            const maxY = window.innerHeight - tooltip.offsetHeight - 15;
+            
+            tooltip.style.left = Math.min(x, maxX) + 'px';
+            tooltip.style.top = Math.min(y, maxY) + 'px';
+        }
+        
+        // Hide tooltip
+        function hideTooltip() {
+            const tooltip = document.getElementById('tooltip');
+            tooltip.style.display = 'none';
+            document.removeEventListener('mousemove', positionTooltip);
+        }
+        
+        // Map controls
+        function zoomToFlights() {
+            if (!lastData || lastData.flights.length === 0) return;
+            
+            const bounds = L.latLngBounds(lastData.flights.map(f => [f.latitude, f.longitude]));
+            map.fitBounds(bounds, { padding: [80, 80], animate: true });
+            showNotification('Zoomed to all flights');
+        }
+        
+        function clearMap() {
+            Object.values(markers).forEach(marker => {
+                if (marker && marker.remove) {
+                    marker.remove();
+                }
+            });
+            markers = {};
+            showNotification('Map cleared');
+        }
+        
+        function toggleAnomalies() {
+            showAnomalies = !showAnomalies;
+            if (lastData) {
+                updateMap(lastData.flights.filter(f => !showAnomalies || f.is_anomaly || f.anomaly_score > 0.8));
+                document.getElementById('mapStatus').textContent = 
+                    showAnomalies ? 'Showing anomalies only' : 'Showing all flights';
+            }
+            showNotification(showAnomalies ? 'Showing anomalies only' : 'Showing all flights');
+        }
+        
+        function focusFlight(flightId) {
+            const marker = markers[flightId];
+            if (marker) {
+                map.setView(marker.getLatLng(), 8, { animate: true });
+                marker.openPopup();
+                showNotification(`Focused on flight ${flightId}`);
+            } else {
+                showNotification(`Flight ${flightId} not found on map`);
+            }
+        }
+        
+        // Alert controls
+        function clearAlerts() {
+            document.getElementById('alertsList').innerHTML = `
+                <div style="text-align: center; padding: 30px 15px; opacity: 0.6;">
+                    <i class="fas fa-inbox" style="font-size: 24px; margin-bottom: 8px;"></i>
+                    <p style="font-size: 12px;">No alerts detected</p>
+                </div>
+            `;
+            document.getElementById('alertsCount').textContent = '0';
+            showNotification('Alerts cleared');
+        }
+        
+        // Refresh data
+        function refreshData() {
+            requestFlights();
+            showNotification('Refreshing data...');
+        }
+        
+        // Export data
+        function exportData() {
+            if (!lastData) {
+                showNotification('No data to export');
+                return;
+            }
+            
+            const dataStr = JSON.stringify(lastData, null, 2);
+            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+            
+            const exportFileDefaultName = `adsb-data-${new Date().toISOString().slice(0, 10)}.json`;
+            
+            const linkElement = document.createElement('a');
+            linkElement.setAttribute('href', dataUri);
+            linkElement.setAttribute('download', exportFileDefaultName);
+            linkElement.click();
+            
+            showNotification('Data exported successfully');
+        }
+        
+        // Show notification
+        function showNotification(message, type = 'info') {
+            document.querySelectorAll('.notification').forEach(el => el.remove());
+            
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            
+            let icon = 'fas fa-info-circle';
+            let bgColor = 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)';
+            
+            if (type === 'error') {
+                icon = 'fas fa-exclamation-circle';
+                bgColor = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+            } else if (type === 'success') {
+                icon = 'fas fa-check-circle';
+                bgColor = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+            } else if (type === 'warning') {
+                icon = 'fas fa-exclamation-triangle';
+                bgColor = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+            }
+            
+            notification.style.background = bgColor;
+            notification.innerHTML = `
+                <i class="${icon}"></i>
+                <span>${message}</span>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }, 3000);
+        }
+        
+        // Auto-refresh for live mode
+        setInterval(() => {
+            if (currentMode === 'live' && socket && socket.connected) {
+                requestFlights();
+            }
+        }, 5000);
+    </script>
+</body>
+</html>
