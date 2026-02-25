@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: adsb-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./adsb.db
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./backend/models:/app/models
+      - ./backend/data:/app/data
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: adsb-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: adsb-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  ml-training:
+    build: ./ml_model
+    container_name: adsb-ml-training
+    volumes:
+      - ./ml_model:/app
+      - ./backend/models:/app/models
+    command: python train_model.py
+    restart: on-failure
+
+volumes:
+  redis_data:
