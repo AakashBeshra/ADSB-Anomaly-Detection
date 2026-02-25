@@ -1,0 +1,17 @@
+{
+  "name": "adsb-anomaly-frontend",
+  "version": "1.0.0",
+  "description": "ADS-B Anomaly Detection Frontend",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "serve": "http-server -p 3000",
+    "python-serve": "python -m http.server 3000"
+  },
+  "dependencies": {
+    "http-server": "^14.1.1"
+  },
+  "devDependencies": {}
+}
